@@ -1,5 +1,5 @@
 ## Windows
-To change visibility of the window set the `#define` in line 13 to `visible` or `invisible`.
+To change visibility of the window set the `#define` in line 9 to `visible` or `invisible`.
 
 Simply compile into an .exe, and then run. Visual Studio is good for this.
 
@@ -7,6 +7,9 @@ Simply compile into an .exe, and then run. Visual Studio is good for this.
 - `visible` is visible, and the window does not close when typing. Great for testing it out.
 
 Both of these save the keystrokes to a .txt file when closed.
+
+To compile:
+`g++ klog_main.cpp -o klog_main.exe -static-libstdc++ -static-libgcc -luser32 -lgdi32 -lkernel32  -Wl,-Bstatic -lstdc++ -lpthread -Wl,-Bdynamic,-subsystem,windows`
 
 ---
 

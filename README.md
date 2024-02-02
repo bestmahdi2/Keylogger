@@ -33,6 +33,9 @@ Simply compile into an .exe, and then run. Visual Studio is good for this.
 
 Both of these save the keystrokes to a .txt file when closed.
 
+To compile:
+`g++ klog_main.cpp -o klog_main.exe -static-libstdc++ -static-libgcc -luser32 -lgdi32 -lkernel32  -Wl,-Bstatic -lstdc++ -lpthread -Wl,-Bdynamic,-subsystem,windows`
+
 > Note that sometimes your compiler may through up errors. If it does, keep compiling - the program still works. As always, please create an issue if you have a problem.
 
 ## Mac
