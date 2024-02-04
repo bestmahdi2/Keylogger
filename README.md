@@ -1,4 +1,4 @@
-# A simple keylogger for Windows, Linux and Mac
+# A simple keylogger for Windows, Linux and Mac Supporting Persian Characters
 [![MIT Licence](https://badges.frapsoft.com/os/mit/mit.png?v=103)](https://opensource.org/licenses/mit-license.php)
 
 [Website](https://simple-keylogger.github.io) - [Keylogger wiki](https://github.com/GiacomoLaw/Keylogger/wiki)
@@ -24,17 +24,26 @@ Currently, there are three keylogger programs for the major operating systems; W
 Or, view the `README.md` file in each programs folder for more up to date information.
 
 ## Windows
-To change visibility of the window set the `#define` in line 9 to `visible` or `invisible`.
+To change visibility of the window set the `#define` in line 29 to `visible` or `invisible`.
 
-Simply compile into an .exe, and then run. Visual Studio is good for this.
+Simply compile into an .exe, and then run. Clion is good for this.
 
 - `invisible` makes the window of the logger disappear, and it also starts up hidden from view. Note that it is still visible in the task manager.
 - `visible` is visible, and the window does not close when typing. Great for testing it out.
 
-Both of these save the keystrokes to a .txt file when closed.
+Both of these save the keystrokes to a .out file when closed.
 
 To compile:
+
 `g++ klog_main.cpp -o klog_main.exe -static-libstdc++ -static-libgcc -luser32 -lgdi32 -lkernel32  -Wl,-Bstatic -lstdc++ -lpthread -Wl,-Bdynamic,-subsystem,windows`
+
+---
+
+Shortcut to capture/ignore mouse events:
+
+`CTRL` `F!`
+
+---
 
 > Note that sometimes your compiler may through up errors. If it does, keep compiling - the program still works. As always, please create an issue if you have a problem.
 
